@@ -1,0 +1,195 @@
+dist: trusty
+sudo: false
+language: c
+
+addons:
+  apt:
+    # Define the required packages without libjansson so we can do a
+    # build without libjansson.
+    packages-without-jansson: &packages-without-jansson
+      - libpcre3
+      - libpcre3-dbg
+      - libpcre3-dev
+      - build-essential
+      - autoconf
+      - automake
+      - libtool
+      - libpcap-dev
+      - libnet1-dev
+      - libyaml-0-2
+      - libyaml-dev
+      - zlib1g
+      - zlib1g-dev
+      - libcap-ng-dev
+      - libcap-ng0
+      - make
+      - libmagic-dev
+      - libnetfilter-queue-dev
+      - libnetfilter-queue1
+      - libnfnetlink-dev
+      - libnfnetlink0
+      - libhiredis-dev
+      - libjansson-dev
+      - libevent-dev
+      - libevent-pthreads-2.0-5
+    # Now define the default set of packages which is those above, and
+    # libjansson.
+    packages: &packages
+      - *packages-without-jansson
+      - libjansson-dev
+
+# Define the default CFLAGS used by all builds as a YAML anchor.
+default-cflags: &default-cflags
+  CFLAGS="-Wall -Wextra -Werror -Wno-unused-parameter -Wno-unused-function"
+
+matrix:
+  allow_failures:
+    # Allow the rust-stable build to fail. These entries must match
+    # the env entry in the build matrix exactly.
+    - env:
+        - NAME="linux,gcc,rust-stable"
+        - *default-cflags
+        - ENABLE_RUST="yes"
+        - RUST_VERSION="stable"
+        - ARGS="--enable-rust --enable-rust-strict"
+        - DO_CHECK_SETUP_SCRIPTS="yes"
+        - DO_DISTCHECK="yes"
+  include:
+    # Linux, gcc, Rust (latest stable).
+    # This is allowed to fail, update allow_failures if the env changes.
+    - os: linux
+      compiler: gcc
+      env:
+        - NAME="linux,gcc,rust-stable"
+        - *default-cflags
+        - ENABLE_RUST="yes"
+        - RUST_VERSION="stable"
+        - ARGS="--enable-rust --enable-rust-strict"
+        - DO_CHECK_SETUP_SCRIPTS="yes"
+        - DO_DISTCHECK="yes"
+    # Linux, gcc, Rust (auto detect).
+    # - Rust 1.31.0, the latest known working version.
+    - os: linux
+      compiler: gcc
+      env:
+        - NAME="linux,gcc,rust-1.31.0-disabled"
+        - *default-cflags
+        - ENABLE_RUST="yes"
+        - RUST_VERSION="1.31.0"
+        - ARGS="--disable-rust"
+        - DO_DISTCHECK="yes"
+    # Linux, gcc, Rust (auto detect).
+    # - Rust 1.31.0, the latest known working version.
+    - os: linux
+      compiler: gcc
+      env:
+        - NAME="linux,gcc,rust-1.31.0-auto"
+        - *default-cflags
+        - ENABLE_RUST="yes"
+        - RUST_VERSION="1.31.0"
+        - ARGS=""
+        - DO_DISTCHECK="yes"
+    # Linux, gcc, Rust.
+    # - Rust 1.31.0, the latest known working version.
+    - os: linux
+      compiler: gcc
+      env:
+        - NAME="linux,gcc,rust-1.31.0"
+        - *default-cflags
+        - ENABLE_RUST="yes"
+        - RUST_VERSION="1.31.0"
+        - ARGS="--enable-rust --enable-rust-strict"
+        - DO_DISTCHECK="yes"
+    # Linux, gcc, Rust (1.24.1 - oldest supported).
+    - os: linux
+      compiler: gcc
+      env:
+        - NAME="linux,gcc,rust-1.24.1"
+        - *default-cflags
+        - ENABLE_RUST="yes"
+        - RUST_VERSION="1.24.1"
+        - ARGS="--enable-rust --enable-rust-strict"
+        - DO_DISTCHECK="yes"
+    # Linux, gcc, -DNDEBUG.
+    - os: linux
+      compiler: gcc
+      env:
+        - NAME="linux,gcc,ndebug"
+        - *default-cflags
+        - EXTRA_CFLAGS="-DNDEBUG"
+    # Linux, clang. For this build we'll also enable -Wshadow.
+    - os: linux
+      compiler: clang
+      env:
+        - NAME="linux,clang"
+        - *default-cflags
+        - EXTRA_CFLAGS="-Wshadow"
+    # Linux, gcc, profiling.
+    - os: linux
+      compiler: gcc
+      env:
+        - NAME="linux,gcc,profiling"
+        - *default-cflags
+        - ARGS="--enable-profiling"
+    # Linux, gcc, debug.
+    - os: linux
+      compiler: gcc
+      env:
+        - NAME="linux,gcc,debug"
+        - *default-cflags
+        - ARGS="--enable-debug"
+        - ENABLE_DEBUG="yes"
+    # Linux, gcc, no jansson.
+    - os: linux
+      compiler: gcc
+      env:
+        - NAME="linux,gcc,no-json"
+        - *default-cflags
+      addons:
+        apt:
+          packages:
+            - *packages-without-jansson
+
+script:
+  - sh ./autogen.sh
+  - |
+    if [[ "${NO_UNITTESTS}" != "yes" ]]; then
+        ARGS="${ARGS} --enable-unittests"
+    fi
+    export CFLAGS="${CFLAGS} ${EXTRA_CFLAGS}"
+    ./configure --enable-nfqueue --enable-hiredis ${ARGS}
+  - |
+    # Linux container builds have 2 cores, make use of them.
+    make -j 2
+  - |
+    # Like "make check", but fail on first error. We redirect the output
+    # so Travis doesn't fail the build with a too much output error.
+    if [[ "${NO_UNITTESTS}" != "yes" ]]; then
+        mkdir -p ./qa/log
+        ./src/suricata -u -l ./qa/log --fatal-unittests > unittests.log 2>&1
+        if [[ $? -ne 0 ]]; then
+            echo "Unit tests failed, last 500 lines of output are:"
+            tail -n 500 unittests.log
+            exit 1
+        fi
+    fi
+  - |
+    if [[ "$DO_DISTCHECK" == "yes" ]]; then
+        make distcheck DISTCHECK_CONFIGURE_FLAGS="${ARGS}"
+    fi
+  - |
+    if [[ "$DO_CHECK_SETUP_SCRIPTS" == "yes" ]]; then
+        (cd scripts && ./check-setup.sh)
+    fi
+
+before_install:
+  - export PATH=$HOME/.cargo/bin:$PATH
+  - |
+    if [[ "$ENABLE_RUST" == "yes" ]]; then
+        curl https://sh.rustup.rs -sSf | sh -s -- -y
+        if [[ "$RUST_VERSION" != "" ]]; then
+            rustup override set $RUST_VERSION
+        fi
+        rustc --version
+    fi
+  - ./qa/travis-libhtp.sh
