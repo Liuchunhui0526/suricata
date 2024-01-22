@@ -1106,6 +1106,7 @@ int StreamTcpReassembleAppLayer (ThreadVars *tv, TcpReassemblyThreadCtx *ra_ctx,
 
     /* this function can be directly called by app layer protocol
      * detection. */
+    // 流禁用了APPL处理，单边设置了不重组
     if ((ssn->flags & STREAMTCP_FLAG_APP_LAYER_DISABLED) ||
         (stream->flags & STREAMTCP_STREAM_FLAG_NOREASSEMBLY)) {
         SCLogDebug("stream no reassembly flag set or app-layer disabled.");
@@ -1720,6 +1721,7 @@ int StreamTcpReassembleHandleSegment(ThreadVars *tv, TcpReassemblyThreadCtx *ra_
 
     /* we need to update the opposing stream in
      * StreamTcpReassembleHandleSegmentUpdateACK */
+    // 拿到对应方向的流地址
     TcpStream *opposing_stream = NULL;
     if (stream == &ssn->client) {
         opposing_stream = &ssn->server;
@@ -1743,6 +1745,7 @@ int StreamTcpReassembleHandleSegment(ThreadVars *tv, TcpReassemblyThreadCtx *ra_
     }
 
     /* handle ack received */
+	// 数据包重组
     if ((dir == UPDATE_DIR_OPPOSING || dir == UPDATE_DIR_BOTH) &&
         StreamTcpReassembleHandleSegmentUpdateACK(tv, ra_ctx, ssn, opposing_stream, p) != 0)
     {

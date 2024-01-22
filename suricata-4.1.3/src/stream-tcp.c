@@ -4689,12 +4689,14 @@ int StreamTcpPacket (ThreadVars *tv, Packet *p, StreamTcpThread *stt,
             }
         }
     }
-
+	// 拿到这条流的数据空间
     TcpSession *ssn = (TcpSession *)p->flow->protoctx;
 
     /* track TCP flags */
     if (ssn != NULL) {
+		// 更新会话最新的标志位
         ssn->tcp_packet_flags |= p->tcph->th_flags;
+		// 更新具体方向的tcp标志
         if (PKT_IS_TOSERVER(p))
             ssn->client.tcp_flags |= p->tcph->th_flags;
         else if (PKT_IS_TOCLIENT(p))
@@ -4705,12 +4707,14 @@ int StreamTcpPacket (ThreadVars *tv, Packet *p, StreamTcpThread *stt,
             ssn->client.tcp_flags != 0 &&
             ssn->server.tcp_flags != 0)
         {
+        	// 关闭双边的ASYNC异步流的标志
             SCLogDebug("ssn %p: removing ASYNC flag as we have packets on both sides", ssn);
             ssn->flags &= ~STREAMTCP_FLAG_ASYNC;
         }
     }
 
     /* update counters */
+	// 对流中的包特征计数
     if ((p->tcph->th_flags & (TH_SYN|TH_ACK)) == (TH_SYN|TH_ACK)) {
         StatsIncr(tv, stt->counter_tcp_synack);
     } else if (p->tcph->th_flags & (TH_SYN)) {
@@ -4720,6 +4724,7 @@ int StreamTcpPacket (ThreadVars *tv, Packet *p, StreamTcpThread *stt,
         StatsIncr(tv, stt->counter_tcp_rst);
     }
 
+	// 检查tcp标志异常，即存在标志但ack值为空
     /* broken TCP http://ask.wireshark.org/questions/3183/acknowledgment-number-broken-tcp-the-acknowledge-field-is-nonzero-while-the-ack-flag-is-not-set */
     if (!(p->tcph->th_flags & TH_ACK) && TCP_GET_ACK(p) != 0) {
         StreamTcpSetEvent(p, STREAM_PKT_BROKEN_ACK);
@@ -5083,7 +5088,9 @@ static int TcpSessionReuseDoneEnough(const Packet *p, const Flow *f, const TcpSe
 int TcpSessionPacketSsnReuse(const Packet *p, const Flow *f, const void *tcp_ssn)
 {
     if (p->proto == IPPROTO_TCP && p->tcph != NULL) {
+		// 判断数据包是否为一个有效的数据包
         if (TcpSessionPacketIsStreamStarter(p) == 1) {
+			// 判断当前流是不是一个已经完成的流。（结束、超时、异常导致流数据需要释放。）
             if (TcpSessionReuseDoneEnough(p, f, tcp_ssn) == 1) {
                 return 1;
             }
@@ -5098,19 +5105,23 @@ TmEcode StreamTcp (ThreadVars *tv, Packet *p, void *data, PacketQueue *pq, Packe
 
     SCLogDebug("p->pcap_cnt %"PRIu64, p->pcap_cnt);
 
+	// 只处理tcp数据。
     if (!(PKT_IS_TCP(p))) {
         return TM_ECODE_OK;
     }
-
+	// 只处理有流的tcp数据
     if (p->flow == NULL) {
         StatsIncr(tv, stt->counter_tcp_no_flow);
         return TM_ECODE_OK;
     }
 
     /* only TCP packets with a flow from here */
+	// 只处理有流的tcp数据
 
+	// 如果不是结束的数据包
     if (!(p->flags & PKT_PSEUDO_STREAM_END)) {
         if (stream_config.flags & STREAMTCP_INIT_FLAG_CHECKSUM_VALIDATION) {
+			// 校验和
             if (StreamTcpValidateChecksum(p) == 0) {
                 StatsIncr(tv, stt->counter_tcp_invalid_checksum);
                 return TM_ECODE_OK;
@@ -5121,6 +5132,7 @@ TmEcode StreamTcp (ThreadVars *tv, Packet *p, void *data, PacketQueue *pq, Packe
     } else {
         p->flags |= PKT_IGNORE_CHECKSUM; //TODO check that this is set at creation
     }
+	// app数据收集，初始化数据空间
     AppLayerProfilingReset(stt->ra_ctx->app_tctx);
 
     (void)StreamTcpPacket(tv, p, stt, pq);

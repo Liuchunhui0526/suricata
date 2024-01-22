@@ -332,12 +332,15 @@ void FlowHandlePacketUpdate(Flow *f, Packet *p)
     SCLogDebug("packet %"PRIu64" -- flow %p", p->pcap_cnt, f);
 
     int state = SC_ATOMIC_GET(f->flow_state);
-
+	// 如果是一条不处理的流。
     if (state != FLOW_STATE_CAPTURE_BYPASSED) {
         /* update the last seen timestamp of this flow */
+		// 更新基于流最后处理的包时间。
         COPY_TIMESTAMP(&p->ts, &f->lastts);
     } else {
         /* still seeing packet, we downgrade to local bypass */
+		// 如果收包间隔大于阈值，将流标记为本地绕行状态（这么做的用意
+		// ，连接不是很活跃，会减少一些针对活跃流的检查）
         if (p->ts.tv_sec - f->lastts.tv_sec > FLOW_BYPASSED_TIMEOUT / 2) {
             SCLogDebug("Downgrading flow to local bypass");
             COPY_TIMESTAMP(&p->ts, &f->lastts);
@@ -345,6 +348,7 @@ void FlowHandlePacketUpdate(Flow *f, Packet *p)
         } else {
             /* In IPS mode the packet could come from the over interface so it would
              * need to be bypassed */
+            // 如果是ips，降低处理模式，削减部分处理逻辑。
             if (EngineModeIsIPS()) {
                 BypassedFlowUpdate(f, p);
             }

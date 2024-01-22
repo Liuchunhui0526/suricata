@@ -165,6 +165,7 @@ TmEcode StreamTcp (ThreadVars *, Packet *, void *, PacketQueue *, PacketQueue *)
 static TmEcode FlowWorker(ThreadVars *tv, Packet *p, void *data, PacketQueue *preq, PacketQueue *unused)
 {
     FlowWorkerThreadData *fw = data;
+	// 获取检测引擎的数据，这个数据每个woker线程一份
     void *detect_thread = SC_ATOMIC_GET(fw->detect_thread);
 
     SCLogDebug("packet %"PRIu64, p->pcap_cnt);
@@ -176,18 +177,20 @@ static TmEcode FlowWorker(ThreadVars *tv, Packet *p, void *data, PacketQueue *pr
 
     /* handle Flow */
     if (p->flags & PKT_WANTS_FLOW) {
+		// 用于计算性能分析结论。需要开启profiling
         FLOWWORKER_PROFILING_START(p, PROFILE_FLOWWORKER_FLOW);
-
+		// 流表匹配，找到对应数据包的那条流
         FlowHandlePacket(tv, fw->dtv, p);
         if (likely(p->flow != NULL)) {
             DEBUG_ASSERT_FLOW_LOCKED(p->flow);
+			// 根据包/流特征更新标志位，处理优先级。填充关于流向信息，自增双边包数。
             if (FlowUpdate(p) == TM_ECODE_DONE) {
                 FLOWLOCK_UNLOCK(p->flow);
                 return TM_ECODE_OK;
             }
         }
         /* Flow is now LOCKED */
-
+		// 用于计算性能分析结论，需要开启profiling
         FLOWWORKER_PROFILING_END(p, PROFILE_FLOWWORKER_FLOW);
 
     /* if PKT_WANTS_FLOW is not set, but PKT_HAS_FLOW is, then this is a
@@ -199,6 +202,7 @@ static TmEcode FlowWorker(ThreadVars *tv, Packet *p, void *data, PacketQueue *pr
     SCLogDebug("packet %"PRIu64" has flow? %s", p->pcap_cnt, p->flow ? "yes" : "no");
 
     /* handle TCP and app layer */
+	// 处理tcp数据
     if (p->flow && PKT_IS_TCP(p)) {
         SCLogDebug("packet %"PRIu64" is TCP. Direction %s", p->pcap_cnt, PKT_IS_TOSERVER(p) ? "TOSERVER" : "TOCLIENT");
         DEBUG_ASSERT_FLOW_LOCKED(p->flow);
@@ -209,10 +213,13 @@ static TmEcode FlowWorker(ThreadVars *tv, Packet *p, void *data, PacketQueue *pr
                 ((PKT_IS_TOSERVER(p) && (p->flowflags & FLOW_PKT_TOSERVER_FIRST)) ||
                  (PKT_IS_TOCLIENT(p) && (p->flowflags & FLOW_PKT_TOCLIENT_FIRST))))
         {
+        	// 检测引擎未开启的状态下，禁用一些关于文件留存的功能。
             DisableDetectFlowFileFlags(p->flow);
         }
 
         FLOWWORKER_PROFILING_START(p, PROFILE_FLOWWORKER_STREAM);
+		// fw->stream_thread 这个处理线程对tcp流的统计数据 
+		// fw->pq 这个处理线程对处理的数据包队列
         StreamTcp(tv, p, fw->stream_thread, &fw->pq, NULL);
         FLOWWORKER_PROFILING_END(p, PROFILE_FLOWWORKER_STREAM);
 
