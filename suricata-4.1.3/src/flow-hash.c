@@ -433,6 +433,7 @@ static Flow *TcpReuseReplace(ThreadVars *tv, DecodeThreadVars *dtv,
                              FlowBucket *fb, Flow *old_f,
                              const uint32_t hash, const Packet *p)
 {
+	// 旧数据标记REUSED
     /* tag flow as reused so future lookups won't find it */
     old_f->flags |= FLOW_TCP_REUSED;
     /* get some settings that we move over to the new flow */
@@ -441,6 +442,7 @@ static Flow *TcpReuseReplace(ThreadVars *tv, DecodeThreadVars *dtv,
     /* since fb lock is still held this flow won't be found until we are done */
     FLOWLOCK_UNLOCK(old_f);
 
+	//获取一个新的流，放在流表头部
     /* Get a new flow. It will be either a locked flow or NULL */
     Flow *f = FlowGetNew(tv, dtv, p);
     if (f == NULL) {
@@ -458,7 +460,7 @@ static Flow *TcpReuseReplace(ThreadVars *tv, DecodeThreadVars *dtv,
     FlowInit(f, p);
     f->flow_hash = hash;
     f->fb = fb;
-
+	// 继续交给旧连接的线程处理
     f->thread_id = thread_id;
     return f;
 }
@@ -492,6 +494,7 @@ Flow *FlowGetFlowFromHash(ThreadVars *tv, DecodeThreadVars *dtv, const Packet *p
     SCLogDebug("fb %p fb->head %p", fb, fb->head);
 
     /* see if the bucket already has a flow */
+	// 如果流表就是空的，在流池里拿一个空间，初始化流表。返回这个流
     if (fb->head == NULL) {
         f = FlowGetNew(tv, dtv, p);
         if (f == NULL) {
@@ -519,40 +522,49 @@ Flow *FlowGetFlowFromHash(ThreadVars *tv, DecodeThreadVars *dtv, const Packet *p
     f = fb->head;
 
     /* see if this is the flow we are looking for */
+	// 比较这个流和当前包的hash数据，如果不一致？？？？
     if (FlowCompare(f, p) == 0) {
         Flow *pf = NULL; /* previous flow */
 
+		// 处理流
         while (f) {
+			// 由于包不属于当前流，备份当前流，使用下一个流匹配这个包。
             pf = f;
             f = f->hnext;
-
+			// 如果下一个节点是空的，代表当前流在末尾且对这个包没有关系。
             if (f == NULL) {
+				// 那么就在流队列池中获取一个新的流空间。
                 f = pf->hnext = FlowGetNew(tv, dtv, p);
                 if (f == NULL) {
                     FBLOCK_UNLOCK(fb);
                     return NULL;
                 }
+				// 作为流表的最后一个。
                 fb->tail = f;
 
                 /* flow is locked */
-
+				// 前一个就是备份的那个流
                 f->hprev = pf;
 
                 /* initialize and return */
+				// 从数据包中更新一些流的信息。
                 FlowInit(f, p);
                 f->flow_hash = hash;
                 f->fb = fb;
+				// 设置状态机
                 FlowUpdateState(f, FLOW_STATE_NEW);
-
+				// 让包挂载这个流上面，并对流的包引用计数加1
                 FlowReference(dest, f);
 
                 FBLOCK_UNLOCK(fb);
                 return f;
             }
-
+			// 如果当前流与buff中的流hash值一样，也就是流表中存在对应包的流。
             if (FlowCompare(f, p) != 0) {
                 /* we found our flow, lets put it on top of the
                  * hash list -- this rewards active flows */
+                // 把这条流放在流表的第一位。这是因为对终端的数据，
+                // 一般都是连续会话。后续的包可能也是这条流的
                 if (f->hnext) {
                     f->hnext->hprev = f->hprev;
                 }
@@ -570,7 +582,9 @@ Flow *FlowGetFlowFromHash(ThreadVars *tv, DecodeThreadVars *dtv, const Packet *p
 
                 /* found our flow, lock & return */
                 FLOWLOCK_WRLOCK(f);
+				// 根据tcp连接的状态，判断这条流是不是一个待清除的流。
                 if (unlikely(TcpSessionPacketSsnReuse(p, f, f->protoctx) == 1)) {
+					// 用一个新的流用。
                     f = TcpReuseReplace(tv, dtv, fb, f, hash, p);
                     if (f == NULL) {
                         FBLOCK_UNLOCK(fb);
@@ -586,6 +600,7 @@ Flow *FlowGetFlowFromHash(ThreadVars *tv, DecodeThreadVars *dtv, const Packet *p
         }
     }
 
+	// 如果流表的第一条就是这个包的流。直接把上面第二部分的流程走一遍。
     /* lock & return */
     FLOWLOCK_WRLOCK(f);
     if (unlikely(TcpSessionPacketSsnReuse(p, f, f->protoctx) == 1)) {
