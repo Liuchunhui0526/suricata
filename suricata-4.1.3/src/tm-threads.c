@@ -128,13 +128,15 @@ void TmThreadsUnsetFlag(ThreadVars *tv, uint16_t flag)
  *
  * \todo Deal with post_pq for slots beyond the first.
  */
+
+
 TmEcode TmThreadsSlotVarRun(ThreadVars *tv, Packet *p,
                                           TmSlot *slot)
 {
     TmEcode r;
     TmSlot *s;
     Packet *extra_p;
-
+	// 调用之后的处理模块
     for (s = slot; s != NULL; s = s->slot_next) {
         TmSlotFunc SlotFunc = SC_ATOMIC_GET(s->SlotFunc);
         PACKET_PROFILING_TMM_START(p, s->tm_id);
@@ -291,6 +293,8 @@ static void *TmThreadsSlotPktAcqLoop(void *td)
 
     PacketPoolInit();
 
+	// 检查是否注册了收包模块    
+	// 收包队列是否存在 转发队列是否存在
     /* check if we are setup properly */
     if (s == NULL || s->PktAcqLoop == NULL || tv->tmqh_in == NULL || tv->tmqh_out == NULL) {
         SCLogError(SC_ERR_FATAL, "TmSlot or ThreadVars badly setup: s=%p,"
@@ -305,6 +309,7 @@ static void *TmThreadsSlotPktAcqLoop(void *td)
     for (slot = s; slot != NULL; slot = slot->slot_next) {
         if (slot->SlotThreadInit != NULL) {
             void *slot_data = NULL;
+			// slot->slot_initdata这个数据是根据配置完成的初始化数据
             r = slot->SlotThreadInit(tv, slot->slot_initdata, &slot_data);
             if (r != TM_ECODE_OK) {
                 if (r == TM_ECODE_DONE) {
@@ -316,6 +321,7 @@ static void *TmThreadsSlotPktAcqLoop(void *td)
                     goto error;
                 }
             }
+			// 将初始化得到的数据放在原子变量里面
             (void)SC_ATOMIC_SET(slot->slot_data, slot_data);
         }
         memset(&slot->slot_pre_pq, 0, sizeof(PacketQueue));
@@ -323,6 +329,7 @@ static void *TmThreadsSlotPktAcqLoop(void *td)
         memset(&slot->slot_post_pq, 0, sizeof(PacketQueue));
         SCMutexInit(&slot->slot_post_pq.mutex_q, NULL);
 
+		// 拿到流处理模块前的队列
         /* get the 'pre qeueue' from module before the stream module */
         if (slot->slot_next != NULL && (slot->slot_next->tm_id == TMM_FLOWWORKER)) {
             SCLogDebug("pre-stream packetqueue %p (postq)", &s->slot_post_pq);

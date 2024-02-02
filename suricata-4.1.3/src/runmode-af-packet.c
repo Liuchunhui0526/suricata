@@ -171,7 +171,7 @@ static void *ParseAFPConfig(const char *iface)
         SCLogInfo("unable to find af-packet config using default values");
         goto finalize;
     }
-
+	// 为af-packet配置下第一个配置块 0 interface
     if_root = ConfFindDeviceConfig(af_packet_node, iface);
     if_default = ConfFindDeviceConfig(af_packet_node, "default");
 
@@ -187,7 +187,7 @@ static void *ParseAFPConfig(const char *iface)
         if_root = if_default;
         if_default = NULL;
     }
-
+	// 获取对应配置项下的threads参数，如果没有或者为0，使用default项下的threads项
     if (ConfGetChildValueWithDefault(if_root, if_default, "threads", &threadsstr) != 1) {
         aconf->threads = 0;
     } else {
@@ -841,7 +841,7 @@ int RunModeIdsAFPWorkers(void)
         SCLogError(SC_ERR_RUNMODE, "Unable to init peers list.");
         exit(EXIT_FAILURE);
     }
-
+	// ParseAFPConfig负责解析配置文件，后边将配置conf数据传到运行流程进行处理
     ret = RunModeSetLiveCaptureWorkers(ParseAFPConfig,
                                     AFPConfigGeThreadsCount,
                                     "ReceiveAFP",

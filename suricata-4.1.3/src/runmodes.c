@@ -285,6 +285,7 @@ void RunModeDispatch(int runmode, const char *custom_mode)
 
     if (custom_mode == NULL) {
         const char *val = NULL;
+		// 获取配置文件runmode 内容
         if (ConfGet("runmode", &val) != 1) {
             custom_mode = NULL;
         } else {
@@ -324,6 +325,7 @@ void RunModeDispatch(int runmode, const char *custom_mode)
                 custom_mode = RunModeNapatechGetDefaultMode();
                 break;
             case RUNMODE_AFP_DEV:
+				// 对于af-packet而言，他的默认runmode为worker
                 custom_mode = RunModeAFPGetDefaultMode();
                 break;
             case RUNMODE_NETMAP:

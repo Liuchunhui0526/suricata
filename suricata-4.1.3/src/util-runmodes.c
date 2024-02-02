@@ -289,10 +289,11 @@ static int RunModeSetLiveCaptureWorkersForDevice(ConfigIfaceThreadsCountFunc Mod
                               unsigned char single_mode)
 {
     int threads_count;
-
+	// 单例模式
     if (single_mode) {
         threads_count = 1;
     } else {
+    	// 根据接口返回结果启动线程数量
         threads_count = ModThreadsCount(aconf);
         SCLogInfo("Going to use %" PRId32 " thread(s)", threads_count);
     }
@@ -319,6 +320,8 @@ static int RunModeSetLiveCaptureWorkersForDevice(ConfigIfaceThreadsCountFunc Mod
             snprintf(printable_threadname, strlen(thread_name)+5+strlen(live_dev), "%s#%02d-%s",
                      thread_name, thread+1, live_dev);
         }
+		// tv类似包处理实例，存在对包处理相关队里和各种回调
+		// pktacqloop 使用的启动器
         tv = TmThreadCreatePacketHandler(tname,
                 "packetpool", "packetpool",
                 "packetpool", "packetpool",
@@ -328,7 +331,7 @@ static int RunModeSetLiveCaptureWorkersForDevice(ConfigIfaceThreadsCountFunc Mod
             exit(EXIT_FAILURE);
         }
         tv->printable_name = printable_threadname;
-
+		// 获取对应包处理槽接口
         tm_module = TmModuleGetByName(recv_mod_name);
         if (tm_module == NULL) {
             SCLogError(SC_ERR_INVALID_VALUE, "TmModuleGetByName failed for %s", recv_mod_name);
@@ -356,9 +359,10 @@ static int RunModeSetLiveCaptureWorkersForDevice(ConfigIfaceThreadsCountFunc Mod
             exit(EXIT_FAILURE);
         }
         TmSlotSetFuncAppend(tv, tm_module, NULL);
-
+		// 上面的槽函数，在tv-slot 构成一个链表，第一个是收包模块
         TmThreadSetCPU(tv, WORKER_CPU_SET);
 
+		// 开始启动每个处理模块
         if (TmThreadSpawn(tv) != TM_ECODE_OK) {
             SCLogError(SC_ERR_THREAD_SPAWN, "TmThreadSpawn failed");
             exit(EXIT_FAILURE);
@@ -381,6 +385,7 @@ int RunModeSetLiveCaptureWorkers(ConfigIfaceParserFunc ConfigParser,
     for (ldev = 0; ldev < nlive; ldev++) {
         const char *live_dev_c = NULL;
         if ((nlive <= 1) && (live_dev != NULL)) {
+			// 根据提供的配置初始化解析接口完成yaml配置文件中的变量解析。
             aconf = ConfigParser(live_dev);
             live_dev_c = live_dev;
             if (unlikely(live_dev_c == NULL)) {
@@ -391,6 +396,7 @@ int RunModeSetLiveCaptureWorkers(ConfigIfaceParserFunc ConfigParser,
             live_dev_c = LiveGetDeviceName(ldev);
             aconf = ConfigParser(live_dev_c);
         }
+		// 传入线程数量获取接口，收包，解码，线程名称，接口名称，接口对应配置信息
         RunModeSetLiveCaptureWorkersForDevice(ModThreadsCount,
                 recv_mod_name,
                 decode_mod_name,

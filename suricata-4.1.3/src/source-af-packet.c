@@ -204,6 +204,8 @@ static int AFPXDPBypassCallback(Packet *p);
 /**
  * \brief Structure to hold thread specific variables.
  */
+
+// afp模式下实例的属性配置
 typedef struct AFPThreadVars_
 {
     union {
@@ -1457,6 +1459,7 @@ static int AFPTryReopen(AFPThreadVars *ptv)
 /**
  *  \brief Main AF_PACKET reading Loop function
  */
+ // 线程启动器，调用流程处理接口，data为这个线程单独的数据，slot为线程单独的数据
 TmEcode ReceiveAFPLoop(ThreadVars *tv, void *data, void *slot)
 {
     SCEnter();
@@ -1469,7 +1472,7 @@ TmEcode ReceiveAFPLoop(ThreadVars *tv, void *data, void *slot)
     time_t current_time;
     int (*AFPReadFunc) (AFPThreadVars *);
     uint64_t discarded_pkts = 0;
-
+	// 解码模块
     ptv->slot = s->slot_next;
 
     if (ptv->flags & AFP_RING_MODE) {
@@ -1529,6 +1532,7 @@ TmEcode ReceiveAFPLoop(ThreadVars *tv, void *data, void *slot)
 
     while (1) {
         /* Start by checking the state of our interface */
+		// 如果链路异常断开，更新套接字
         if (unlikely(ptv->afp_state == AFP_STATE_DOWN)) {
             int dbreak = 0;
 
@@ -1649,6 +1653,7 @@ static int AFPGetIfnumByDev(int fd, const char *ifname, int verbose)
     memset(&ifr, 0, sizeof(ifr));
     strlcpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
 
+	// 获取网络接口索引值
     if (ioctl(fd, SIOCGIFINDEX, &ifr) == -1) {
         if (verbose)
             SCLogError(SC_ERR_AFP_CREATE, "Unable to find iface %s: %s",
@@ -2056,12 +2061,14 @@ static int AFPCreateSocket(AFPThreadVars *ptv, char *devname, int verbose)
     int if_idx;
 
     /* open socket */
+	// 创建一个基于网口的原始套接字
     ptv->socket = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
     if (ptv->socket == -1) {
         SCLogError(SC_ERR_AFP_CREATE, "Couldn't create a AF_PACKET socket, error %s", strerror(errno));
         goto error;
     }
-
+	// verbose是否打印错误报告   
+	// AFPGetIfnumByDev获取网络接口索引值
     if_idx = AFPGetIfnumByDev(ptv->socket, devname, verbose);
 
     if (if_idx == -1) {
@@ -2138,7 +2145,7 @@ static int AFPCreateSocket(AFPThreadVars *ptv, char *devname, int verbose)
             goto socket_err;
         }
     }
-
+	// 将原始套接字绑定在bind_address指定的网口上
     r = bind(ptv->socket, (struct sockaddr *)&bind_address, sizeof(bind_address));
     if (r < 0) {
         if (verbose) {
