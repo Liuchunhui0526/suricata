@@ -293,7 +293,7 @@ static void *TmThreadsSlotPktAcqLoop(void *td)
 
     PacketPoolInit();
 
-	// 检查是否注册了收包模块    
+	// 检查是否注册了收包模块
 	// 收包队列是否存在 转发队列是否存在
     /* check if we are setup properly */
     if (s == NULL || s->PktAcqLoop == NULL || tv->tmqh_in == NULL || tv->tmqh_out == NULL) {
@@ -309,7 +309,7 @@ static void *TmThreadsSlotPktAcqLoop(void *td)
     for (slot = s; slot != NULL; slot = slot->slot_next) {
         if (slot->SlotThreadInit != NULL) {
             void *slot_data = NULL;
-			// slot->slot_initdata这个数据是根据配置完成的初始化数据
+			// slot->slot_initdata这个数据是根据配置完成的初始化数据，就是yaml配置文件里面的内容
             r = slot->SlotThreadInit(tv, slot->slot_initdata, &slot_data);
             if (r != TM_ECODE_OK) {
                 if (r == TM_ECODE_DONE) {

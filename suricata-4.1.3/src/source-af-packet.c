@@ -1459,11 +1459,11 @@ static int AFPTryReopen(AFPThreadVars *ptv)
 /**
  *  \brief Main AF_PACKET reading Loop function
  */
- // 线程启动器，调用流程处理接口，data为这个线程单独的数据，slot为线程单独的数据
+ // 调用流程处理接口，data recvInit的结果，slot为收包节点
 TmEcode ReceiveAFPLoop(ThreadVars *tv, void *data, void *slot)
 {
     SCEnter();
-
+	// ptv是初始化的数据 是recv Init 接口处理的结果
     AFPThreadVars *ptv = (AFPThreadVars *)data;
     struct pollfd fds;
     int r;
@@ -1527,6 +1527,7 @@ TmEcode ReceiveAFPLoop(ThreadVars *tv, void *data, void *slot)
 #endif
     }
 
+	// 设置fd轮训监视，无阻塞处理
     fds.fd = ptv->socket;
     fds.events = POLLIN;
 
@@ -1558,7 +1559,7 @@ TmEcode ReceiveAFPLoop(ThreadVars *tv, void *data, void *slot)
         if (suricata_ctl_flags != 0) {
             break;
         }
-
+		// 如果描述符有事件发生，但连接状态异常。
         if (r > 0 &&
                 (fds.revents & (POLLHUP|POLLRDHUP|POLLERR|POLLNVAL))) {
             if (fds.revents & (POLLHUP | POLLRDHUP)) {
@@ -1635,7 +1636,7 @@ static int AFPGetDevFlags(int fd, const char *ifname)
 
     memset(&ifr, 0, sizeof(ifr));
     strlcpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
-
+	// 获取网络接口的标志信息
     if (ioctl(fd, SIOCGIFFLAGS, &ifr) == -1) {
         SCLogError(SC_ERR_AFP_CREATE, "Unable to find type for iface \"%s\": %s",
                    ifname, strerror(errno));
@@ -1814,6 +1815,7 @@ static int AFPSetupRing(AFPThreadVars *ptv, char *devname)
     {
         val = TPACKET_V2;
     }
+	// 查看基于TPACKET_V2协议的链路头部长度
     if (getsockopt(ptv->socket, SOL_PACKET, PACKET_HDRLEN, &val, &len) < 0) {
         if (errno == ENOPROTOOPT) {
             if (ptv->flags & AFP_TPACKET_V3) {
@@ -2068,7 +2070,7 @@ static int AFPCreateSocket(AFPThreadVars *ptv, char *devname, int verbose)
         goto error;
     }
 	// verbose是否打印错误报告   
-	// AFPGetIfnumByDev获取网络接口索引值
+	// AFPGetIfnumByDev    根据devname获取网口的索引值
     if_idx = AFPGetIfnumByDev(ptv->socket, devname, verbose);
 
     if (if_idx == -1) {
@@ -2076,6 +2078,7 @@ static int AFPCreateSocket(AFPThreadVars *ptv, char *devname, int verbose)
     }
 
     /* bind socket */
+	// 创建配置结构体，作用是希望将fd绑定到idx接口上。
     memset(&bind_address, 0, sizeof(bind_address));
     bind_address.sll_family = AF_PACKET;
     bind_address.sll_protocol = htons(ETH_P_ALL);
@@ -2087,6 +2090,7 @@ static int AFPCreateSocket(AFPThreadVars *ptv, char *devname, int verbose)
         goto socket_err;
     }
 
+	// 获取网络接口的标志，查看是否处于up且通信链路正常。
     int if_flags = AFPGetDevFlags(ptv->socket, ptv->iface);
     if (if_flags == -1) {
         if (verbose) {
@@ -2106,6 +2110,7 @@ static int AFPCreateSocket(AFPThreadVars *ptv, char *devname, int verbose)
         goto socket_err;
     }
 
+	// 设置指定网口的混杂模式
     if (ptv->promisc != 0) {
         /* Force promiscuous mode */
         memset(&sock_params, 0, sizeof(sock_params));
@@ -2119,7 +2124,7 @@ static int AFPCreateSocket(AFPThreadVars *ptv, char *devname, int verbose)
             goto socket_err;
         }
     }
-
+	// 设置数据包辅助数据，后续数据包同时获取更多内容，包括校验结果
     if (ptv->checksum_mode == CHECKSUM_VALIDATION_KERNEL) {
         int val = 1;
         if (setsockopt(ptv->socket, SOL_PACKET, PACKET_AUXDATA, &val,
@@ -2131,6 +2136,7 @@ static int AFPCreateSocket(AFPThreadVars *ptv, char *devname, int verbose)
     }
 
     /* set socket recv buffer size */
+	// 设置内核处理套接字保留缓存区大小
     if (ptv->buffer_size != 0) {
         /*
          * Set the socket buffer size to the specified value.
@@ -2538,7 +2544,7 @@ TmEcode ReceiveAFPThreadInit(ThreadVars *tv, const void *initdata, void **data)
         SCLogError(SC_ERR_INVALID_ARGUMENT, "initdata == NULL");
         SCReturnInt(TM_ECODE_FAILED);
     }
-
+	// 功能处理数据结构。根据配置文件解析的
     AFPThreadVars *ptv = SCMalloc(sizeof(AFPThreadVars));
     if (unlikely(ptv == NULL)) {
         afpconfig->DerefFunc(afpconfig);
@@ -2549,20 +2555,22 @@ TmEcode ReceiveAFPThreadInit(ThreadVars *tv, const void *initdata, void **data)
     ptv->tv = tv;
     ptv->cooked = 0;
 
+	// 接口名称
     strlcpy(ptv->iface, afpconfig->iface, AFP_IFACE_NAME_LENGTH);
     ptv->iface[AFP_IFACE_NAME_LENGTH - 1]= '\0';
 
+	// 物理口状态
     ptv->livedev = LiveGetDevice(ptv->iface);
     if (ptv->livedev == NULL) {
         SCLogError(SC_ERR_INVALID_VALUE, "Unable to find Live device");
         SCFree(ptv);
         SCReturnInt(TM_ECODE_FAILED);
     }
-
+	// 获取基础配置，用来初始化空间的
     ptv->buffer_size = afpconfig->buffer_size;
     ptv->ring_size = afpconfig->ring_size;
     ptv->block_size = afpconfig->block_size;
-
+	// 功能配置，混杂模式，校验模式
     ptv->promisc = afpconfig->promisc;
     ptv->checksum_mode = afpconfig->checksum_mode;
     ptv->bpf_filter = NULL;

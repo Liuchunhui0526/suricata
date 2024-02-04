@@ -293,7 +293,7 @@ static int RunModeSetLiveCaptureWorkersForDevice(ConfigIfaceThreadsCountFunc Mod
     if (single_mode) {
         threads_count = 1;
     } else {
-    	// 根据接口返回结果启动线程数量
+    	// 根据接口返回结果启动线程数量 读取yaml配置文件中的threads值
         threads_count = ModThreadsCount(aconf);
         SCLogInfo("Going to use %" PRId32 " thread(s)", threads_count);
     }
