@@ -869,6 +869,7 @@ static int AFPReadFromRing(AFPThreadVars *ptv)
         }
 
         /* Read packet from ring */
+        // 遍历整个环形缓冲区
         h.raw = (((union thdr **)ptv->ring_v2)[ptv->frame_offset]);
         if (unlikely(h.raw == NULL)) {
             /* Impossible we reach this point in normal condition, so trigger
@@ -1845,6 +1846,7 @@ static int AFPSetupRing(AFPThreadVars *ptv, char *devname)
     }
 
 #ifdef HAVE_HW_TIMESTAMPING
+	//启动硬件时间戳。
     int req = SOF_TIMESTAMPING_RAW_HARDWARE;
     if (setsockopt(ptv->socket, SOL_PACKET, PACKET_TIMESTAMP, (void *) &req,
                 sizeof(req)) < 0) {
@@ -1934,6 +1936,7 @@ static int AFPSetupRing(AFPThreadVars *ptv, char *devname)
     mmap_flag = MAP_SHARED;
     if (ptv->flags & AFP_MMAP_LOCKED)
         mmap_flag |= MAP_LOCKED;
+	// 将原始套接字的环形缓冲区映射到进程中，便于后续的数据包读取
     ptv->ring_buf = mmap(0, ptv->ring_buflen, PROT_READ|PROT_WRITE,
             mmap_flag, ptv->socket, 0);
     if (ptv->ring_buf == MAP_FAILED) {
@@ -1963,6 +1966,7 @@ static int AFPSetupRing(AFPThreadVars *ptv, char *devname)
         memset(ptv->ring_v2, 0, ptv->req.tp_frame_nr * sizeof (union thdr *));
         /* fill the header ring with proper frame ptr*/
         ptv->frame_offset = 0;
+		// 这里做了数据帧空间指针留存，通过ring v2空间保存了，每个环形缓冲区数据包地址头。
         for (i = 0; i < ptv->req.tp_block_nr; ++i) {
             void *base = &(ptv->ring_buf[i * ptv->req.tp_block_size]);
             unsigned int j;
@@ -2171,6 +2175,7 @@ static int AFPCreateSocket(AFPThreadVars *ptv, char *devname, int verbose)
 
 
 #ifdef HAVE_PACKET_FANOUT
+	// 对每个线程设置风扇组，内核协议栈支持socket根据风扇组进行分流
     /* add binded socket to fanout group */
     if (ptv->threads > 1) {
         uint16_t mode = ptv->cluster_type;
