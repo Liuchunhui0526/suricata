@@ -869,7 +869,7 @@ static int AFPReadFromRing(AFPThreadVars *ptv)
         }
 
         /* Read packet from ring */
-        // 遍历整个环形缓冲区
+        // 遍历整个环形缓冲区，读数据包
         h.raw = (((union thdr **)ptv->ring_v2)[ptv->frame_offset]);
         if (unlikely(h.raw == NULL)) {
             /* Impossible we reach this point in normal condition, so trigger
@@ -877,6 +877,8 @@ static int AFPReadFromRing(AFPThreadVars *ptv)
             SCReturnInt(AFP_READ_FAILURE);
         }
 
+
+		// 判断数据包是否在被使用或者当前位置没有h2头部的话
         if ((! h.h2->tp_status) || (h.h2->tp_status & TP_STATUS_USER_BUSY)) {
             if (read_pkts == 0) {
                 if (loop_start == -1) {
@@ -884,6 +886,7 @@ static int AFPReadFromRing(AFPThreadVars *ptv)
                 } else if (unlikely(loop_start == (int)ptv->frame_offset)) {
                     SCReturnInt(AFP_READ_OK);
                 }
+				// 遍历超过最大范围，从头获取
                 if (++ptv->frame_offset >= ptv->req.tp_frame_nr) {
                     ptv->frame_offset = 0;
                 }
@@ -901,6 +904,7 @@ static int AFPReadFromRing(AFPThreadVars *ptv)
 
         /* Our packet is still used by suricata, we exit read loop to
          * gain some time */
+        // 如果当前包被其他线程使用，就不处理了。
         if (h.h2->tp_status & TP_STATUS_USER_BUSY) {
             SCReturnInt(AFP_READ_OK);
         }
@@ -910,6 +914,7 @@ static int AFPReadFromRing(AFPThreadVars *ptv)
             goto next_frame;
         }
 
+		// 获取一个数据包实例
         p = PacketGetFromQueueOrAlloc();
         if (p == NULL) {
             SCReturnInt(AFP_SURI_FAILURE);
@@ -933,6 +938,7 @@ static int AFPReadFromRing(AFPThreadVars *ptv)
         /* Suricata will treat packet so telling it is busy, this
          * status will be reset to 0 (ie TP_STATUS_KERNEL) in the release
          * function. */
+        // 到这里，数据包将被锁定。
         h.h2->tp_status |= TP_STATUS_USER_BUSY;
 
         ptv->pkts++;

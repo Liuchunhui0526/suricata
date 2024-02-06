@@ -161,11 +161,11 @@ static TmEcode FlowWorkerThreadDeinit(ThreadVars *tv, void *data)
 
 TmEcode Detect(ThreadVars *tv, Packet *p, void *data, PacketQueue *pq, PacketQueue *postpq);
 TmEcode StreamTcp (ThreadVars *, Packet *, void *, PacketQueue *, PacketQueue *);
-
+// dataæ˜¯flowworkeræ¨¡å—åˆå§‹åŒ–çš„æ•°æ®
 static TmEcode FlowWorker(ThreadVars *tv, Packet *p, void *data, PacketQueue *preq, PacketQueue *unused)
 {
     FlowWorkerThreadData *fw = data;
-	// »ñÈ¡¼ì²âÒýÇæµÄÊý¾Ý£¬Õâ¸öÊý¾ÝÃ¿¸öwokerÏß³ÌÒ»·Ý
+	// èŽ·å–æ£€æµ‹å¼•æ“Žçš„æ•°æ®ï¼Œè¿™ä¸ªæ•°æ®æ¯ä¸ªwokerçº¿ç¨‹ä¸€ä»½
     void *detect_thread = SC_ATOMIC_GET(fw->detect_thread);
 
     SCLogDebug("packet %"PRIu64, p->pcap_cnt);
@@ -177,20 +177,20 @@ static TmEcode FlowWorker(ThreadVars *tv, Packet *p, void *data, PacketQueue *pr
 
     /* handle Flow */
     if (p->flags & PKT_WANTS_FLOW) {
-		// ÓÃÓÚ¼ÆËãÐÔÄÜ·ÖÎö½áÂÛ¡£ÐèÒª¿ªÆôprofiling
+		// ç”¨äºŽè®¡ç®—æ€§èƒ½åˆ†æžç»“è®ºã€‚éœ€è¦å¼€å¯profiling
         FLOWWORKER_PROFILING_START(p, PROFILE_FLOWWORKER_FLOW);
-		// Á÷±íÆ¥Åä£¬ÕÒµ½¶ÔÓ¦Êý¾Ý°üµÄÄÇÌõÁ÷
+		// æµè¡¨åŒ¹é…ï¼Œæ‰¾åˆ°å¯¹åº”æ•°æ®åŒ…çš„é‚£æ¡æµ
         FlowHandlePacket(tv, fw->dtv, p);
         if (likely(p->flow != NULL)) {
             DEBUG_ASSERT_FLOW_LOCKED(p->flow);
-			// ¸ù¾Ý°ü/Á÷ÌØÕ÷¸üÐÂ±êÖ¾Î»£¬´¦ÀíÓÅÏÈ¼¶¡£Ìî³ä¹ØÓÚÁ÷ÏòÐÅÏ¢£¬×ÔÔöË«±ß°üÊý¡£
+			// æ ¹æ®åŒ…/æµç‰¹å¾æ›´æ–°æ ‡å¿—ä½ï¼Œå¤„ç†ä¼˜å…ˆçº§ã€‚å¡«å……å…³äºŽæµå‘ä¿¡æ¯ï¼Œè‡ªå¢žåŒè¾¹åŒ…æ•°ã€‚
             if (FlowUpdate(p) == TM_ECODE_DONE) {
                 FLOWLOCK_UNLOCK(p->flow);
                 return TM_ECODE_OK;
             }
         }
         /* Flow is now LOCKED */
-		// ÓÃÓÚ¼ÆËãÐÔÄÜ·ÖÎö½áÂÛ£¬ÐèÒª¿ªÆôprofiling
+		// ç”¨äºŽè®¡ç®—æ€§èƒ½åˆ†æžç»“è®ºï¼Œéœ€è¦å¼€å¯profiling
         FLOWWORKER_PROFILING_END(p, PROFILE_FLOWWORKER_FLOW);
 
     /* if PKT_WANTS_FLOW is not set, but PKT_HAS_FLOW is, then this is a
@@ -202,7 +202,7 @@ static TmEcode FlowWorker(ThreadVars *tv, Packet *p, void *data, PacketQueue *pr
     SCLogDebug("packet %"PRIu64" has flow? %s", p->pcap_cnt, p->flow ? "yes" : "no");
 
     /* handle TCP and app layer */
-	// ´¦ÀítcpÊý¾Ý
+	// å¤„ç†tcpæ•°æ®
     if (p->flow && PKT_IS_TCP(p)) {
         SCLogDebug("packet %"PRIu64" is TCP. Direction %s", p->pcap_cnt, PKT_IS_TOSERVER(p) ? "TOSERVER" : "TOCLIENT");
         DEBUG_ASSERT_FLOW_LOCKED(p->flow);
@@ -213,13 +213,13 @@ static TmEcode FlowWorker(ThreadVars *tv, Packet *p, void *data, PacketQueue *pr
                 ((PKT_IS_TOSERVER(p) && (p->flowflags & FLOW_PKT_TOSERVER_FIRST)) ||
                  (PKT_IS_TOCLIENT(p) && (p->flowflags & FLOW_PKT_TOCLIENT_FIRST))))
         {
-        	// ¼ì²âÒýÇæÎ´¿ªÆôµÄ×´Ì¬ÏÂ£¬½ûÓÃÒ»Ð©¹ØÓÚÎÄ¼þÁô´æµÄ¹¦ÄÜ¡£
+        	// æ£€æµ‹å¼•æ“Žæœªå¼€å¯çš„çŠ¶æ€ä¸‹ï¼Œç¦ç”¨ä¸€äº›å…³äºŽæ–‡ä»¶ç•™å­˜çš„åŠŸèƒ½ã€‚
             DisableDetectFlowFileFlags(p->flow);
         }
 
         FLOWWORKER_PROFILING_START(p, PROFILE_FLOWWORKER_STREAM);
-		// fw->stream_thread Õâ¸ö´¦ÀíÏß³Ì¶ÔtcpÁ÷µÄÍ³¼ÆÊý¾Ý 
-		// fw->pq Õâ¸ö´¦ÀíÏß³Ì¶Ô´¦ÀíµÄÊý¾Ý°ü¶ÓÁÐ
+		// fw->stream_thread è¿™ä¸ªå¤„ç†çº¿ç¨‹å¯¹tcpæµçš„ç»Ÿè®¡æ•°æ® 
+		// fw->pq è¿™ä¸ªå¤„ç†çº¿ç¨‹å¯¹å¤„ç†çš„æ•°æ®åŒ…é˜Ÿåˆ—
         StreamTcp(tv, p, fw->stream_thread, &fw->pq, NULL);
         FLOWWORKER_PROFILING_END(p, PROFILE_FLOWWORKER_STREAM);
 

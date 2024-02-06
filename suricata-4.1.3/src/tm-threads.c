@@ -140,7 +140,7 @@ TmEcode TmThreadsSlotVarRun(ThreadVars *tv, Packet *p,
     for (s = slot; s != NULL; s = s->slot_next) {
         TmSlotFunc SlotFunc = SC_ATOMIC_GET(s->SlotFunc);
         PACKET_PROFILING_TMM_START(p, s->tm_id);
-
+		// slot_data是初始化后的数据
         if (unlikely(s->id == 0)) {
             r = SlotFunc(tv, p, SC_ATOMIC_GET(s->slot_data), &s->slot_pre_pq, &s->slot_post_pq);
         } else {
